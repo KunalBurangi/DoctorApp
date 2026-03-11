@@ -39,12 +39,6 @@ interface DoctorDB extends DBSchema {
     value: DoctorImageLink;
     indexes: { 'by-doctor': string; 'by-image': string };
   };
-  // Keep old 'images' store definition for migration (will be deleted after migration)
-  images: {
-    key: string;
-    value: { id: string; doctorId: string; imageBlob: Blob; description?: string; createdAt: number };
-    indexes: { 'by-doctor': string };
-  };
 }
 
 let dbPromise: Promise<IDBPDatabase<DoctorDB>> | null = null;
@@ -52,47 +46,27 @@ let dbPromise: Promise<IDBPDatabase<DoctorDB>> | null = null;
 function getDbPromise(): Promise<IDBPDatabase<DoctorDB>> {
   if (!dbPromise) {
     dbPromise = openDB<DoctorDB>('doctor-app-db', 2, {
-      upgrade(db, oldVersion, _newVersion, transaction) {
-        // Version 1: Original schema
+      upgrade(db, oldVersion) {
+        // Fresh install — just create the v2 schema directly
         if (oldVersion < 1) {
           db.createObjectStore('doctors', { keyPath: 'id' });
-          const imageStore = db.createObjectStore('images', { keyPath: 'id' });
-          imageStore.createIndex('by-doctor', 'doctorId');
         }
 
         // Version 2: Shared image library
         if (oldVersion < 2) {
-          // Create new stores
-          db.createObjectStore('globalImages', { keyPath: 'id' });
-          const linkStore = db.createObjectStore('doctorImageLinks', { keyPath: 'id' });
-          linkStore.createIndex('by-doctor', 'doctorId');
-          linkStore.createIndex('by-image', 'imageId');
+          if (!db.objectStoreNames.contains('globalImages')) {
+            db.createObjectStore('globalImages', { keyPath: 'id' });
+          }
+          if (!db.objectStoreNames.contains('doctorImageLinks')) {
+            const linkStore = db.createObjectStore('doctorImageLinks', { keyPath: 'id' });
+            linkStore.createIndex('by-doctor', 'doctorId');
+            linkStore.createIndex('by-image', 'imageId');
+          }
 
-          // Migrate existing images → globalImages + doctorImageLinks
-          const oldImageStore = transaction.objectStore('images');
-          oldImageStore.getAll().then(oldImages => {
-            const globalImgStore = transaction.objectStore('globalImages');
-            const linkStoreRef = transaction.objectStore('doctorImageLinks');
-
-            for (const old of oldImages) {
-              // Add to global images
-              globalImgStore.put({
-                id: old.id,
-                imageBlob: old.imageBlob,
-                name: old.description || `Image ${old.id.slice(0, 6)}`,
-                createdAt: old.createdAt,
-              });
-              // Create link to original doctor
-              linkStoreRef.put({
-                id: crypto.randomUUID(),
-                doctorId: old.doctorId,
-                imageId: old.id,
-              });
-            }
-          });
-
-          // Delete old images store
-          db.deleteObjectStore('images');
+          // If upgrading from v1, delete the old per-doctor images store
+          if (oldVersion >= 1 && (db as unknown as { objectStoreNames: DOMStringList }).objectStoreNames.contains('images')) {
+            (db as unknown as { deleteObjectStore(name: string): void }).deleteObjectStore('images');
+          }
         }
       },
     });
