@@ -43,9 +43,9 @@ interface DoctorDB extends DBSchema {
 
 let dbPromise: Promise<IDBPDatabase<DoctorDB>> | null = null;
 
-function getDbPromise(): Promise<IDBPDatabase<DoctorDB>> {
-  if (!dbPromise) {
-    dbPromise = openDB<DoctorDB>('doctor-app-db', 2, {
+async function initDb(): Promise<IDBPDatabase<DoctorDB>> {
+  try {
+    return await openDB<DoctorDB>('doctor-app-db', 2, {
       upgrade(db, oldVersion) {
         // Fresh install — just create the v2 schema directly
         if (oldVersion < 1) {
@@ -70,6 +70,30 @@ function getDbPromise(): Promise<IDBPDatabase<DoctorDB>> {
         }
       },
     });
+  } catch (e) {
+    // DB is corrupted — nuke it and start fresh
+    console.warn('Database corrupted, recreating...', e);
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.deleteDatabase('doctor-app-db');
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+    // Retry with a clean slate
+    return openDB<DoctorDB>('doctor-app-db', 2, {
+      upgrade(db) {
+        db.createObjectStore('doctors', { keyPath: 'id' });
+        db.createObjectStore('globalImages', { keyPath: 'id' });
+        const linkStore = db.createObjectStore('doctorImageLinks', { keyPath: 'id' });
+        linkStore.createIndex('by-doctor', 'doctorId');
+        linkStore.createIndex('by-image', 'imageId');
+      },
+    });
+  }
+}
+
+function getDbPromise(): Promise<IDBPDatabase<DoctorDB>> {
+  if (!dbPromise) {
+    dbPromise = initDb();
   }
   return dbPromise;
 }
