@@ -211,7 +211,7 @@ export default function DoctorDetails() {
                     setImages(prev => prev.filter(i => i.id !== img.id));
                   }
                 }}
-                className="absolute top-2 right-2 p-2 bg-red-500 hover:bg-red-600 text-white rounded-lg shadow-lg opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all z-10 border border-white/20"
+                className="absolute top-2 right-2 p-2 bg-red-500 hover:bg-red-600 text-white rounded-lg shadow-lg transition-all z-10 border border-white/20"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
