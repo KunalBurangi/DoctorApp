@@ -85,10 +85,10 @@ export default function PresentationCarousel({ images, initialIndex = 0, isOpen,
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStart(e.targetTouches[0].clientX);
   };
-  const handleTouchMove = (e: React.TouchEvent) => {
+  const handleTouchEnd = (e: React.TouchEvent) => {
     if (touchStart === null) return;
-    const currentTouch = e.targetTouches[0].clientX;
-    const diff = touchStart - currentTouch;
+    const endX = e.changedTouches[0].clientX;
+    const diff = touchStart - endX;
 
     if (Math.abs(diff) > 50) { // threshold
       if (diff > 0) {
@@ -96,10 +96,7 @@ export default function PresentationCarousel({ images, initialIndex = 0, isOpen,
       } else {
         handlePrevious();
       }
-      setTouchStart(null);
     }
-  };
-  const handleTouchEnd = () => {
     setTouchStart(null);
   };
 
@@ -134,7 +131,6 @@ export default function PresentationCarousel({ images, initialIndex = 0, isOpen,
       <div 
         className="relative w-full h-full flex items-center justify-center overflow-hidden outline-none select-none"
         onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
         <img

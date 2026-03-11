@@ -7,13 +7,15 @@ interface Props {
   doctorId: string;
   isOpen: boolean;
   onClose: () => void;
-  onChanged: () => void; // callback to refresh parent
+  onChanged: () => void;
 }
 
 export default function ImagePickerModal({ doctorId, isOpen, onClose, onChanged }: Props) {
   const [allImages, setAllImages] = useState<GlobalImage[]>([]);
-  const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set());
+  const [originalLinkedIds, setOriginalLinkedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -28,23 +30,42 @@ export default function ImagePickerModal({ doctorId, isOpen, onClose, onChanged 
       dbParams.getDoctorLinkedImageIds(doctorId),
     ]);
     setAllImages(imgs.sort((a, b) => b.createdAt - a.createdAt));
-    setLinkedIds(ids);
+    setOriginalLinkedIds(ids);
+    setSelectedIds(new Set(ids)); // Start with current links
     setIsLoading(false);
   };
 
-  const toggleLink = async (imageId: string) => {
-    if (linkedIds.has(imageId)) {
-      await dbParams.unlinkImageFromDoctor(doctorId, imageId);
-      setLinkedIds(prev => {
-        const next = new Set(prev);
+  // Toggle in local state only — no DB calls
+  const toggleSelection = (imageId: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(imageId)) {
         next.delete(imageId);
-        return next;
-      });
-    } else {
-      await dbParams.linkImageToDoctor(doctorId, imageId);
-      setLinkedIds(prev => new Set(prev).add(imageId));
-    }
+      } else {
+        next.add(imageId);
+      }
+      return next;
+    });
+  };
+
+  // Batch save on "Done" — only write the diffs
+  const handleDone = async () => {
+    setIsSaving(true);
+
+    // Find what needs to be linked (new selections)
+    const toLink = [...selectedIds].filter(id => !originalLinkedIds.has(id));
+    // Find what needs to be unlinked (removed selections)
+    const toUnlink = [...originalLinkedIds].filter(id => !selectedIds.has(id));
+
+    // Batch all DB operations
+    await Promise.all([
+      ...toLink.map(id => dbParams.linkImageToDoctor(doctorId, id)),
+      ...toUnlink.map(id => dbParams.unlinkImageFromDoctor(doctorId, id)),
+    ]);
+
+    setIsSaving(false);
     onChanged();
+    onClose();
   };
 
   if (!isOpen) return null;
@@ -59,7 +80,7 @@ export default function ImagePickerModal({ doctorId, isOpen, onClose, onChanged 
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Select Images</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Tap to link or unlink images. {linkedIds.size} selected.
+              Tap to select or deselect. {selectedIds.size} selected.
             </p>
           </div>
           <button
@@ -79,13 +100,13 @@ export default function ImagePickerModal({ doctorId, isOpen, onClose, onChanged 
           ) : allImages.length > 0 ? (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
               {allImages.map(img => {
-                const isLinked = linkedIds.has(img.id);
+                const isSelected = selectedIds.has(img.id);
                 return (
                   <button
                     key={img.id}
-                    onClick={() => toggleLink(img.id)}
+                    onClick={() => toggleSelection(img.id)}
                     className={`relative aspect-square rounded-xl overflow-hidden border-3 transition-all duration-200 ${
-                      isLinked
+                      isSelected
                         ? 'border-indigo-500 ring-2 ring-indigo-500/30 scale-[0.97]'
                         : 'border-transparent hover:border-gray-300 dark:hover:border-zinc-600'
                     }`}
@@ -96,7 +117,7 @@ export default function ImagePickerModal({ doctorId, isOpen, onClose, onChanged 
                       className="w-full h-full object-cover"
                       onLoad={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)}
                     />
-                    {isLinked && (
+                    {isSelected && (
                       <div className="absolute inset-0 bg-indigo-500/20 flex items-center justify-center">
                         <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center shadow-lg">
                           <Check className="w-5 h-5 text-white" strokeWidth={3} />
@@ -122,10 +143,11 @@ export default function ImagePickerModal({ doctorId, isOpen, onClose, onChanged 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-200 dark:border-zinc-700">
           <button
-            onClick={onClose}
-            className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-all active:scale-[0.98]"
+            onClick={handleDone}
+            disabled={isSaving}
+            className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-all active:scale-[0.98] disabled:opacity-50"
           >
-            Done ({linkedIds.size} selected)
+            {isSaving ? 'Saving...' : `Done (${selectedIds.size} selected)`}
           </button>
         </div>
       </div>
