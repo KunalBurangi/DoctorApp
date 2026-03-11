@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import type { Doctor, GlobalImage } from '../db';
 import { dbParams } from '../db';
-import { ArrowLeft, User, Stethoscope, Phone, Image as ImageIcon, Play, Trash2, LinkIcon } from 'lucide-react';
+import { ArrowLeft, User, Stethoscope, Phone, Image as ImageIcon, Play, Trash2, LinkIcon, Camera } from 'lucide-react';
 import PresentationCarousel from '../components/PresentationCarousel';
 import ImagePickerModal from '../components/ImagePickerModal';
+import AvatarCropper from '../components/AvatarCropper';
 
 export default function DoctorDetails() {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +20,11 @@ export default function DoctorDetails() {
 
   // Image Picker State
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+
+  // Avatar State
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [isCropperOpen, setIsCropperOpen] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (id) {
@@ -104,9 +110,37 @@ export default function DoctorDetails() {
       <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100 dark:border-zinc-800 flex flex-col sm:flex-row gap-6 items-start sm:items-center mb-10 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
 
-        <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-50 dark:from-indigo-900/40 dark:to-indigo-800/20 flex flex-shrink-0 items-center justify-center text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/50 shadow-inner">
-          <User className="w-12 h-12 sm:w-16 sm:h-16" />
-        </div>
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          ref={avatarInputRef}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              setAvatarFile(file);
+              setIsCropperOpen(true);
+            }
+            if (avatarInputRef.current) avatarInputRef.current.value = '';
+          }}
+        />
+        <button
+          onClick={() => avatarInputRef.current?.click()}
+          className="relative w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-50 dark:from-indigo-900/40 dark:to-indigo-800/20 flex flex-shrink-0 items-center justify-center text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/50 shadow-inner group overflow-hidden"
+        >
+          {doctor.avatarBlob ? (
+            <img
+              src={URL.createObjectURL(doctor.avatarBlob)}
+              alt={doctor.name}
+              className="w-full h-full object-cover rounded-full"
+            />
+          ) : (
+            <User className="w-12 h-12 sm:w-16 sm:h-16" />
+          )}
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors rounded-full flex items-center justify-center">
+            <Camera className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+        </button>
 
         <div className="flex-1 space-y-3 z-10">
           <h1 className="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white tracking-tight">
@@ -229,6 +263,24 @@ export default function DoctorDetails() {
         onClose={() => setIsPickerOpen(false)}
         onChanged={refreshImages}
       />
+
+      {avatarFile && (
+        <AvatarCropper
+          imageFile={avatarFile}
+          isOpen={isCropperOpen}
+          onClose={() => {
+            setIsCropperOpen(false);
+            setAvatarFile(null);
+          }}
+          onCropped={async (blob) => {
+            const updated = { ...doctor, avatarBlob: blob };
+            await dbParams.addDoctor(updated);
+            setDoctor(updated);
+            setIsCropperOpen(false);
+            setAvatarFile(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -13,9 +13,13 @@ export default function DoctorCard({ doctor }: Props) {
       className="group block bg-white dark:bg-zinc-900 rounded-2xl shadow-sm hover:shadow-xl border border-gray-100 dark:border-zinc-800 hover:border-indigo-100 dark:hover:border-indigo-500/30 transition-all duration-300 overflow-hidden"
     >
       <div className="p-5 flex items-start gap-4">
-        {/* Avatar Placeholder */}
-        <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-indigo-100 to-indigo-50 dark:from-indigo-900/40 dark:to-indigo-800/20 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/50 group-hover:scale-105 transition-transform duration-300">
-          <User className="w-7 h-7" />
+        {/* Avatar */}
+        <div className="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-indigo-100 to-indigo-50 dark:from-indigo-900/40 dark:to-indigo-800/20 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/50 group-hover:scale-105 transition-transform duration-300 overflow-hidden">
+          {doctor.avatarBlob ? (
+            <img src={URL.createObjectURL(doctor.avatarBlob)} alt={doctor.name} className="w-full h-full object-cover" onLoad={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)} />
+          ) : (
+            <User className="w-7 h-7" />
+          )}
         </div>
         
         <div className="flex-1 min-w-0 pt-1">

@@ -7,6 +7,7 @@ export interface Doctor {
   specialization: string;
   contact?: string;
   avatarUrl?: string;
+  avatarBlob?: Blob;
   createdAt: number;
 }
 
