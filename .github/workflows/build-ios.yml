@@ -20,13 +20,16 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Web App
         run: npm run build
 
       - name: Fix iOS file permissions
         run: chmod -R u+w ios/
+
+      - name: Ensure Capacitor iOS is installed
+        run: npm install @capacitor/ios
 
       - name: Sync Capacitor iOS
         run: npx cap sync ios
