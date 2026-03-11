@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { DoctorImage } from '../db';
+import type { GlobalImage } from '../db';
 import { X, ChevronLeft, ChevronRight, Play, Pause } from 'lucide-react';
 
 interface Props {
-  images: DoctorImage[];
+  images: GlobalImage[];
   initialIndex?: number;
   isOpen: boolean;
   onClose: () => void;

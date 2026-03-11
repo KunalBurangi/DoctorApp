@@ -1,22 +1,24 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import type { Doctor, DoctorImage } from '../db';
+import type { Doctor, GlobalImage } from '../db';
 import { dbParams } from '../db';
-import { ArrowLeft, Upload, User, Stethoscope, Phone, Image as ImageIcon, Play, Trash2 } from 'lucide-react';
+import { ArrowLeft, User, Stethoscope, Phone, Image as ImageIcon, Play, Trash2, LinkIcon } from 'lucide-react';
 import PresentationCarousel from '../components/PresentationCarousel';
+import ImagePickerModal from '../components/ImagePickerModal';
 
 export default function DoctorDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [doctor, setDoctor] = useState<Doctor | null>(null);
-  const [images, setImages] = useState<DoctorImage[]>([]);
+  const [images, setImages] = useState<GlobalImage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // Carousel State
   const [isCarouselOpen, setIsCarouselOpen] = useState(false);
   const [carouselInitialIndex, setCarouselInitialIndex] = useState(0);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Image Picker State
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -30,8 +32,8 @@ export default function DoctorDetails() {
       const doc = await dbParams.getDoctor(doctorId);
       if (doc) {
         setDoctor(doc);
-        const docsImgs = await dbParams.getDoctorImages(doctorId);
-        setImages(docsImgs.sort((a, b) => b.createdAt - a.createdAt));
+        const linkedImgs = await dbParams.getDoctorLinkedImages(doctorId);
+        setImages(linkedImgs);
       }
     } catch (e) {
       console.error(e);
@@ -40,31 +42,18 @@ export default function DoctorDetails() {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !e.target.files.length || !doctor) return;
-
-    setIsLoading(true);
-    const newImages: DoctorImage[] = [];
-    
-    // Process files
-    for (const file of Array.from(e.target.files)) {
-      if (!file.type.startsWith('image/')) continue;
-      
-      const newImg: DoctorImage = {
-        id: crypto.randomUUID(),
-        doctorId: doctor.id,
-        imageBlob: file,
-        createdAt: Date.now()
-      };
-      await dbParams.addDoctorImage(newImg);
-      newImages.push(newImg);
+  const refreshImages = async () => {
+    if (id) {
+      const linkedImgs = await dbParams.getDoctorLinkedImages(id);
+      setImages(linkedImgs);
     }
+  };
 
-    setImages(prev => [...newImages, ...prev].sort((a, b) => b.createdAt - a.createdAt));
-    setIsLoading(false);
-    
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+  const handleUnlink = async (imageId: string) => {
+    if (!doctor) return;
+    if (confirm('Remove this image from this doctor? (The image stays in your library)')) {
+      await dbParams.unlinkImageFromDoctor(doctor.id, imageId);
+      setImages(prev => prev.filter(i => i.id !== imageId));
     }
   };
 
@@ -91,7 +80,7 @@ export default function DoctorDetails() {
     <div className="px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto animate-in fade-in duration-500">
       {/* Header / Nav */}
       <div className="mb-8 flex items-center justify-between">
-        <Link 
+        <Link
           to="/"
           className="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
         >
@@ -99,7 +88,7 @@ export default function DoctorDetails() {
         </Link>
         <button
           onClick={async () => {
-            if (confirm(`Are you sure you want to delete Dr. ${doctor.name}? This will also delete all associated images.`)) {
+            if (confirm(`Are you sure you want to delete Dr. ${doctor.name}? This will remove all image links for this doctor.`)) {
               await dbParams.deleteDoctor(doctor.id);
               navigate('/');
             }
@@ -114,7 +103,7 @@ export default function DoctorDetails() {
       {/* Doctor Profile Banner */}
       <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100 dark:border-zinc-800 flex flex-col sm:flex-row gap-6 items-start sm:items-center mb-10 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
-        
+
         <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-50 dark:from-indigo-900/40 dark:to-indigo-800/20 flex flex-shrink-0 items-center justify-center text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/50 shadow-inner">
           <User className="w-12 h-12 sm:w-16 sm:h-16" />
         </div>
@@ -142,16 +131,16 @@ export default function DoctorDetails() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white inline-flex items-center gap-2">
-            Medical Records & Scans
+            Linked Images
           </h2>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-            {images.length} {images.length === 1 ? 'document' : 'documents'} uploaded
+            {images.length} {images.length === 1 ? 'image' : 'images'} linked to this doctor
           </p>
         </div>
-        
+
         <div className="flex items-center gap-3">
           {images.length > 0 && (
-            <button 
+            <button
               onClick={() => {
                 setCarouselInitialIndex(0);
                 setIsCarouselOpen(true);
@@ -163,20 +152,12 @@ export default function DoctorDetails() {
             </button>
           )}
 
-          <input
-            type="file"
-            multiple
-            accept="image/*"
-            className="hidden"
-            ref={fileInputRef}
-            onChange={handleFileUpload}
-          />
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => setIsPickerOpen(true)}
             className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all border border-indigo-100 dark:border-indigo-500/20 active:scale-95"
           >
-            <Upload className="w-4 h-4" />
-            Add Images
+            <LinkIcon className="w-4 h-4" />
+            Select Images
           </button>
         </div>
       </div>
@@ -185,33 +166,31 @@ export default function DoctorDetails() {
       {images.length > 0 ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
           {images.map((img, idx) => (
-            <div 
-              key={img.id} 
+            <div
+              key={img.id}
               onClick={() => {
                 setCarouselInitialIndex(idx);
                 setIsCarouselOpen(true);
               }}
               className="group relative aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100 dark:bg-zinc-800 shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer border border-gray-200 dark:border-zinc-700/50"
             >
-              <img 
-                src={URL.createObjectURL(img.imageBlob)} 
-                alt="Medical scan" 
+              <img
+                src={URL.createObjectURL(img.imageBlob)}
+                alt={img.name}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
-                onLoad={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)} // Clean up memory
+                onLoad={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)}
               />
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center">
                 <Play className="w-12 h-12 text-white opacity-0 group-hover:opacity-100 transform scale-50 group-hover:scale-100 transition-all duration-300" fill="currentColor" />
               </div>
-              
-              <button 
-                onClick={async (e) => {
+
+              <button
+                onClick={(e) => {
                   e.stopPropagation();
-                  if(confirm("Are you sure you want to delete this image?")) {
-                    await dbParams.deleteDoctorImage(img.id);
-                    setImages(prev => prev.filter(i => i.id !== img.id));
-                  }
+                  handleUnlink(img.id);
                 }}
-                className="absolute top-2 right-2 p-2 bg-red-500 hover:bg-red-600 text-white rounded-lg shadow-lg transition-all z-10 border border-white/20"
+                className="absolute top-2 right-2 p-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg shadow-lg transition-all z-10 border border-white/20"
+                title="Unlink from this doctor"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -223,24 +202,32 @@ export default function DoctorDetails() {
           <div className="w-16 h-16 bg-gray-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mb-4 text-gray-400">
             <ImageIcon className="w-8 h-8" />
           </div>
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">No images yet</h3>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">No images linked</h3>
           <p className="text-gray-500 dark:text-gray-400 max-w-sm mb-6 text-sm">
-            Upload prescriptions, x-rays, or test results to keep them securely organized.
+            Select images from your shared library to link them to this doctor.
           </p>
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => setIsPickerOpen(true)}
             className="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium inline-flex items-center gap-1.5"
           >
-            Click here to upload
+            <LinkIcon className="w-4 h-4" />
+            Select Images
           </button>
         </div>
       )}
-      
-      <PresentationCarousel 
+
+      <PresentationCarousel
         images={images}
         initialIndex={carouselInitialIndex}
         isOpen={isCarouselOpen}
         onClose={() => setIsCarouselOpen(false)}
+      />
+
+      <ImagePickerModal
+        doctorId={doctor.id}
+        isOpen={isPickerOpen}
+        onClose={() => setIsPickerOpen(false)}
+        onChanged={refreshImages}
       />
     </div>
   );
