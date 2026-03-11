@@ -1,0 +1,45 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Web App
+        run: npm run build
+
+      - name: Sync Capacitor iOS
+        run: npx cap sync ios
+
+      - name: Build iOS App Framework
+        working-directory: ./ios/App
+        run: xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphonesimulator -derivedDataPath build
+        # Note: Building a true signed .ipa file for physical Apple devices requires an Apple Developer Account and provisioning profiles.
+        # This step simply validates the Xcode project builds successfully in CI for the simulator.
+        
+      - name: Package App for Simulator
+        working-directory: ./ios/App/build/Build/Products/Release-iphonesimulator
+        run: zip -r ../../../../../App.app.zip App.app
+
+      - name: Upload iOS Simulator Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-app
+          path: App.app.zip
