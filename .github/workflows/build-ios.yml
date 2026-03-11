@@ -34,11 +34,13 @@ jobs:
       - name: Sync Capacitor iOS
         run: npx cap sync ios
 
-      - name: Build iOS App Framework
+      - name: Resolve Swift Packages
         working-directory: ./ios/App
-        run: xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphonesimulator -derivedDataPath build
-        # Note: Building a true signed .ipa file for physical Apple devices requires an Apple Developer Account and provisioning profiles.
-        # This step simply validates the Xcode project builds successfully in CI for the simulator.
+        run: xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App
+
+      - name: Build iOS App
+        working-directory: ./ios/App
+        run: xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphonesimulator -derivedDataPath build CODE_SIGNING_ALLOWED=NO
         
       - name: Package App for Simulator
         working-directory: ./ios/App/build/Build/Products/Release-iphonesimulator
