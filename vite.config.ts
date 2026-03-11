@@ -5,5 +5,5 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: './', // Required for loading from file:/// context in Electron/Capacitor
+  base: '/DoctorApp/', // GitHub Pages serves from /<repo-name>/
 })
