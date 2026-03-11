@@ -25,6 +25,9 @@ jobs:
       - name: Build Web App
         run: npm run build
 
+      - name: Fix iOS file permissions
+        run: chmod -R u+w ios/
+
       - name: Sync Capacitor iOS
         run: npx cap sync ios
 
