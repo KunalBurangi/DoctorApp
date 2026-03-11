@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import type { Doctor, DoctorImage } from '../db';
 import { dbParams } from '../db';
 import { ArrowLeft, Upload, User, Stethoscope, Phone, Image as ImageIcon, Play, Trash2 } from 'lucide-react';
@@ -7,6 +7,7 @@ import PresentationCarousel from '../components/PresentationCarousel';
 
 export default function DoctorDetails() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [images, setImages] = useState<DoctorImage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,13 +90,25 @@ export default function DoctorDetails() {
   return (
     <div className="px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto animate-in fade-in duration-500">
       {/* Header / Nav */}
-      <div className="mb-8 flex items-center gap-4">
+      <div className="mb-8 flex items-center justify-between">
         <Link 
           to="/"
           className="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
         >
           <ArrowLeft className="w-6 h-6" />
         </Link>
+        <button
+          onClick={async () => {
+            if (confirm(`Are you sure you want to delete Dr. ${doctor.name}? This will also delete all associated images.`)) {
+              await dbParams.deleteDoctor(doctor.id);
+              navigate('/');
+            }
+          }}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 font-medium hover:bg-red-100 dark:hover:bg-red-500/20 transition-all border border-red-200 dark:border-red-500/20 active:scale-95 text-sm"
+        >
+          <Trash2 className="w-4 h-4" />
+          Delete Doctor
+        </button>
       </div>
 
       {/* Doctor Profile Banner */}
