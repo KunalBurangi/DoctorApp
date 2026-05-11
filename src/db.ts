@@ -74,13 +74,12 @@ async function initDb(): Promise<IDBPDatabase<DoctorDB>> {
         // Version 3: Add sortOrder to existing links (backfill with 0)
         if (oldVersion < 3) {
           const linkStore = transaction.objectStore('doctorImageLinks');
-          linkStore.openCursor().then(function iterate(cursor): void {
-            if (!cursor) return;
-            const value = cursor.value as DoctorImageLink;
-            if (value.sortOrder === undefined) {
-              cursor.update({ ...value, sortOrder: 0 });
+          linkStore.getAll().then(links => {
+            for (const link of links) {
+              if ((link as unknown as Record<string, unknown>).sortOrder === undefined) {
+                linkStore.put({ ...link, sortOrder: 0 });
+              }
             }
-            return cursor.continue().then(iterate);
           });
         }
       },
