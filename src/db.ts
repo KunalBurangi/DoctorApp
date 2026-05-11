@@ -24,6 +24,7 @@ export interface DoctorImageLink {
   id: string;
   doctorId: string;
   imageId: string;
+  sortOrder: number;
 }
 
 interface DoctorDB extends DBSchema {
@@ -46,8 +47,8 @@ let dbPromise: Promise<IDBPDatabase<DoctorDB>> | null = null;
 
 async function initDb(): Promise<IDBPDatabase<DoctorDB>> {
   try {
-    return await openDB<DoctorDB>('doctor-app-db', 2, {
-      upgrade(db, oldVersion) {
+    return await openDB<DoctorDB>('doctor-app-db', 3, {
+      upgrade(db, oldVersion, _newVersion, transaction) {
         // Fresh install — just create the v2 schema directly
         if (oldVersion < 1) {
           db.createObjectStore('doctors', { keyPath: 'id' });
@@ -69,6 +70,19 @@ async function initDb(): Promise<IDBPDatabase<DoctorDB>> {
             (db as unknown as { deleteObjectStore(name: string): void }).deleteObjectStore('images');
           }
         }
+
+        // Version 3: Add sortOrder to existing links (backfill with 0)
+        if (oldVersion < 3) {
+          const linkStore = transaction.objectStore('doctorImageLinks');
+          linkStore.openCursor().then(function iterate(cursor) {
+            if (!cursor) return;
+            const value = cursor.value as DoctorImageLink;
+            if (value.sortOrder === undefined) {
+              cursor.update({ ...value, sortOrder: 0 });
+            }
+            return cursor.continue().then(iterate);
+          });
+        }
       },
     });
   } catch (e) {
@@ -80,7 +94,7 @@ async function initDb(): Promise<IDBPDatabase<DoctorDB>> {
       req.onerror = () => reject(req.error);
     });
     // Retry with a clean slate
-    return openDB<DoctorDB>('doctor-app-db', 2, {
+    return openDB<DoctorDB>('doctor-app-db', 3, {
       upgrade(db) {
         db.createObjectStore('doctors', { keyPath: 'id' });
         db.createObjectStore('globalImages', { keyPath: 'id' });
@@ -163,10 +177,13 @@ export const dbParams = {
     // Check if link already exists
     const allLinks = await db.getAllFromIndex('doctorImageLinks', 'by-doctor', doctorId);
     if (allLinks.some(l => l.imageId === imageId)) return; // already linked
+    // Auto-assign sortOrder as max+1 so new images go to the end
+    const maxOrder = allLinks.reduce((max, l) => Math.max(max, l.sortOrder ?? 0), 0);
     await db.put('doctorImageLinks', {
       id: crypto.randomUUID(),
       doctorId,
       imageId,
+      sortOrder: maxOrder + 1,
     });
   },
 
@@ -182,12 +199,28 @@ export const dbParams = {
   async getDoctorLinkedImages(doctorId: string): Promise<GlobalImage[]> {
     const db = await getDbPromise();
     const links = await db.getAllFromIndex('doctorImageLinks', 'by-doctor', doctorId);
+    // Sort links by sortOrder so images come back in user-defined sequence
+    const sortedLinks = [...links].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
     const images: GlobalImage[] = [];
-    for (const link of links) {
+    for (const link of sortedLinks) {
       const img = await db.get('globalImages', link.imageId);
       if (img) images.push(img);
     }
-    return images.sort((a, b) => b.createdAt - a.createdAt);
+    return images;
+  },
+
+  /** Reorder images for a doctor. imageIds should be in the desired display order. */
+  async reorderDoctorImages(doctorId: string, imageIds: string[]): Promise<void> {
+    const db = await getDbPromise();
+    const links = await db.getAllFromIndex('doctorImageLinks', 'by-doctor', doctorId);
+    const tx = db.transaction('doctorImageLinks', 'readwrite');
+    for (const link of links) {
+      const newOrder = imageIds.indexOf(link.imageId);
+      if (newOrder !== -1 && link.sortOrder !== newOrder) {
+        await tx.store.put({ ...link, sortOrder: newOrder });
+      }
+    }
+    await tx.done;
   },
 
   async getDoctorLinkedImageIds(doctorId: string): Promise<Set<string>> {

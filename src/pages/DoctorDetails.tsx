@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import type { Doctor, GlobalImage } from '../db';
 import { dbParams } from '../db';
-import { ArrowLeft, User, Stethoscope, Phone, Image as ImageIcon, Play, Trash2, LinkIcon, Camera } from 'lucide-react';
+import { ArrowLeft, User, Stethoscope, Phone, Image as ImageIcon, Play, Trash2, LinkIcon, Camera, GripVertical, Check, ArrowUpDown } from 'lucide-react';
 import PresentationCarousel from '../components/PresentationCarousel';
 import ImagePickerModal from '../components/ImagePickerModal';
 import AvatarCropper from '../components/AvatarCropper';
@@ -25,6 +25,55 @@ export default function DoctorDetails() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [isCropperOpen, setIsCropperOpen] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  // Reorder State
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleDragStart = useCallback((idx: number) => {
+    setDragIndex(idx);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    setDragOverIndex(idx);
+  }, []);
+
+  const handleDrop = useCallback(async (idx: number) => {
+    if (dragIndex === null || dragIndex === idx) {
+      setDragIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+    const reordered = [...images];
+    const [moved] = reordered.splice(dragIndex, 1);
+    reordered.splice(idx, 0, moved);
+    setImages(reordered);
+    setDragIndex(null);
+    setDragOverIndex(null);
+    // Persist new order
+    if (id) {
+      await dbParams.reorderDoctorImages(id, reordered.map(img => img.id));
+    }
+  }, [dragIndex, images, id]);
+
+  const handleDragEnd = useCallback(() => {
+    setDragIndex(null);
+    setDragOverIndex(null);
+  }, []);
+
+  // Move image by offset (for manual up/down buttons on mobile)
+  const moveImage = useCallback(async (fromIdx: number, toIdx: number) => {
+    if (toIdx < 0 || toIdx >= images.length) return;
+    const reordered = [...images];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    setImages(reordered);
+    if (id) {
+      await dbParams.reorderDoctorImages(id, reordered.map(img => img.id));
+    }
+  }, [images, id]);
 
   useEffect(() => {
     if (id) {
@@ -172,18 +221,34 @@ export default function DoctorDetails() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           {images.length > 0 && (
-            <button
-              onClick={() => {
-                setCarouselInitialIndex(0);
-                setIsCarouselOpen(true);
-              }}
-              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-semibold hover:bg-gray-800 dark:hover:bg-gray-100 transition-all shadow-md active:scale-95 group"
-            >
-              <Play className="w-4 h-4 text-white dark:text-gray-900 group-hover:scale-110 transition-transform" fill="currentColor" />
-              Present
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  setCarouselInitialIndex(0);
+                  setIsCarouselOpen(true);
+                }}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-semibold hover:bg-gray-800 dark:hover:bg-gray-100 transition-all shadow-md active:scale-95 group"
+              >
+                <Play className="w-4 h-4 text-white dark:text-gray-900 group-hover:scale-110 transition-transform" fill="currentColor" />
+                Present
+              </button>
+              <button
+                onClick={() => setIsReorderMode(!isReorderMode)}
+                className={`inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-semibold transition-all active:scale-95 border ${
+                  isReorderMode
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 shadow-md'
+                    : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/20 border-amber-200 dark:border-amber-500/20'
+                }`}
+              >
+                {isReorderMode ? (
+                  <><Check className="w-4 h-4" /> Done</>
+                ) : (
+                  <><ArrowUpDown className="w-4 h-4" /> Reorder</>
+                )}
+              </button>
+            </>
           )}
 
           <button
@@ -202,32 +267,83 @@ export default function DoctorDetails() {
           {images.map((img, idx) => (
             <div
               key={img.id}
+              draggable={isReorderMode}
+              onDragStart={() => handleDragStart(idx)}
+              onDragOver={(e) => handleDragOver(e, idx)}
+              onDrop={() => handleDrop(idx)}
+              onDragEnd={handleDragEnd}
               onClick={() => {
-                setCarouselInitialIndex(idx);
-                setIsCarouselOpen(true);
+                if (!isReorderMode) {
+                  setCarouselInitialIndex(idx);
+                  setIsCarouselOpen(true);
+                }
               }}
-              className="group relative aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100 dark:bg-zinc-800 shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer border border-gray-200 dark:border-zinc-700/50"
+              className={`group relative aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100 dark:bg-zinc-800 shadow-sm transition-all duration-300 border ${
+                isReorderMode
+                  ? dragOverIndex === idx
+                    ? 'border-indigo-500 ring-2 ring-indigo-500/30 scale-[0.97] shadow-xl'
+                    : dragIndex === idx
+                      ? 'opacity-50 border-gray-300 dark:border-zinc-600'
+                      : 'border-amber-300 dark:border-amber-500/40 cursor-grab active:cursor-grabbing hover:shadow-lg'
+                  : 'border-gray-200 dark:border-zinc-700/50 hover:shadow-xl cursor-pointer'
+              }`}
             >
               <img
                 src={URL.createObjectURL(img.imageBlob)}
                 alt={img.name}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                className={`w-full h-full object-cover transition-transform duration-500 ease-out ${
+                  isReorderMode ? '' : 'group-hover:scale-105'
+                }`}
                 onLoad={(e) => URL.revokeObjectURL((e.target as HTMLImageElement).src)}
               />
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center">
-                <Play className="w-12 h-12 text-white opacity-0 group-hover:opacity-100 transform scale-50 group-hover:scale-100 transition-all duration-300" fill="currentColor" />
+
+              {/* Sequence number badge */}
+              <div className={`absolute top-2 left-2 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold shadow-lg transition-all duration-200 ${
+                isReorderMode
+                  ? 'bg-amber-500 text-white opacity-100 translate-y-0'
+                  : 'bg-black/60 text-white/90 opacity-0 group-hover:opacity-100 -translate-y-1 group-hover:translate-y-0'
+              }`}>
+                {isReorderMode && <GripVertical className="w-3 h-3" />}
+                {idx + 1}
               </div>
 
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleUnlink(img.id);
-                }}
-                className="absolute top-2 right-2 p-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg shadow-lg transition-all z-10 border border-white/20"
-                title="Unlink from this doctor"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              {!isReorderMode && (
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center">
+                  <Play className="w-12 h-12 text-white opacity-0 group-hover:opacity-100 transform scale-50 group-hover:scale-100 transition-all duration-300" fill="currentColor" />
+                </div>
+              )}
+
+              {isReorderMode ? (
+                <div className="absolute bottom-2 right-2 flex gap-1 z-10">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); moveImage(idx, idx - 1); }}
+                    disabled={idx === 0}
+                    className="p-1.5 bg-white/90 dark:bg-zinc-800/90 hover:bg-white dark:hover:bg-zinc-700 rounded-lg shadow transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Move earlier"
+                  >
+                    <ArrowLeft className="w-4 h-4 text-gray-700 dark:text-gray-300" />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); moveImage(idx, idx + 1); }}
+                    disabled={idx === images.length - 1}
+                    className="p-1.5 bg-white/90 dark:bg-zinc-800/90 hover:bg-white dark:hover:bg-zinc-700 rounded-lg shadow transition-all disabled:opacity-30 disabled:cursor-not-allowed rotate-180"
+                    title="Move later"
+                  >
+                    <ArrowLeft className="w-4 h-4 text-gray-700 dark:text-gray-300" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleUnlink(img.id);
+                  }}
+                  className="absolute top-2 right-2 p-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg shadow-lg transition-all z-10 border border-white/20"
+                  title="Unlink from this doctor"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
           ))}
         </div>
